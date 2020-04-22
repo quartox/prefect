@@ -176,6 +176,21 @@ def server():
     is_flag=True,
     hidden=True,
 )
+@click.option(
+    "--restart",
+    help="Restart the server docker containers",
+    is_flag=True
+)
+@click.option(
+    "--stop-on-exit",
+    help="Stop the server docker containers (without removing them) on exit",
+    is_flag=True
+)
+@click.option(
+    "--kill",
+    help="Stop and remove the server docker containers.",
+    is_flag=True
+)
 def start(
     version,
     skip_pull,
@@ -191,6 +206,9 @@ def start(
     no_graphql_port,
     no_ui_port,
     no_server_port,
+    restart,
+    stop_on_exit,
+    kill
 ):
     """
     This command spins up all infrastructure and services for the Prefect Core server
@@ -288,16 +306,22 @@ def start(
 
     proc = None
     try:
-        if not skip_pull:
+        if not (skip_pull or restart):
             subprocess.check_call(
                 ["docker-compose", "pull"], cwd=compose_dir_path, env=env
             )
 
-        cmd = ["docker-compose", "up"]
+        cmd = ["docker-compose"]
+        if restart:
+            cmd += ["start"]
+        elif kill:
+            cmd += ["down"]
+        else:
+            cmd += ["up"]
         if no_ui:
             cmd += ["--scale", "ui=0"]
         proc = subprocess.Popen(cmd, cwd=compose_dir_path, env=env)
-        while True:
+        while not kill:
             time.sleep(0.5)
     except:
         click.secho(
@@ -305,9 +329,14 @@ def start(
             fg="white",
             bg="red",
         )
-        subprocess.check_output(
-            ["docker-compose", "down"], cwd=compose_dir_path, env=env
-        )
+        if stop_on_exit:
+            subprocess.check_output(
+                ["docker-compose", "stop"], cwd=compose_dir_path, env=env
+            )
+        else:
+            subprocess.check_output(
+                ["docker-compose", "down"], cwd=compose_dir_path, env=env
+            )
         if proc:
             proc.kill()
         raise
